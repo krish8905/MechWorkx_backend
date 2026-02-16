@@ -22,7 +22,7 @@ const signToken = (user) => {
 };
 
 // Health check
-app.get("/", (req, res) => res.json({ ok: true, service: "auth-backend" }));
+app.get("/", (req, res) => res.json({ ok: true, service: "auth-backend-test" }));
 
 // SIGNUP
 app.post("/auth/signup", async (req, res) => {
