@@ -48,7 +48,7 @@ app.post("/auth/signup", async (req, res) => {
       return res.status(400).json({ message: "Username is required" });
     }
     if (!isValidPhone(phone)) {
-      return res.status(400).json({ message: "Valid phone number is required (10-15 digits)" });
+      return res.status(400).json({ message: "Valid phone number is required (10)" });
     }
     if (!VALID_USER_TYPES.includes(user_type)) {
       return res.status(400).json({ message: "User type must be customer, vendor, or both" });
