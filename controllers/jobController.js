@@ -2,22 +2,68 @@ const pool = require("../config/db");
 
 // ── CUSTOMER APIs ──
 
-const createJob = async (req, res) => {
+const sendJobOTP = async (req, res) => {
+    try {
+        const { phone } = req.user; // Use logged in user's phone
+        const { jobWork } = req.body;
+
+        if (!jobWork) return res.status(400).json({ success: false, message: "Job work title is required" });
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+        await pool.query(
+            "INSERT INTO otp_verifications (user_id, otp_code, otp_expiry) VALUES ($1, $2, $3)",
+            [req.user.id, otp, expiry]
+        );
+
+        console.log(`[JOB OTP] User: ${req.user.id} -> OTP: ${otp} for Job: ${jobWork}`);
+
+        return res.json({
+            success: true,
+            message: "OTP sent for job verification",
+            otp // sim SMS
+        });
+    } catch (err) {
+        console.error("SEND JOB OTP ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+const verifyAndSubmitJob = async (req, res) => {
     const client = await pool.connect();
     try {
         const {
-            title, description, material_type, quantity, budget,
+            otp, title, description, material_type, quantity, budget,
             deadline, job_type, delivery_location, material_provider,
             category_id, invited_vendor_ids
         } = req.body;
         const customerId = req.user.id;
 
-        if (!title || !description || !job_type) {
-            return res.status(400).json({ success: false, message: "Title, description, and job type are required" });
+        if (!otp || !title || !description || !job_type) {
+            return res.status(400).json({ success: false, message: "OTP, Title, description, and job type are required" });
         }
 
         await client.query("BEGIN");
 
+        // Verify OTP
+        const otpCheck = await client.query(
+            `SELECT id FROM otp_verifications 
+             WHERE user_id = $1 AND otp_code = $2 AND is_verified = false 
+             AND otp_expiry > NOW() 
+             ORDER BY created_at DESC LIMIT 1`,
+            [customerId, otp]
+        );
+
+        if (otpCheck.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        // Mark OTP as used
+        await client.query("UPDATE otp_verifications SET is_verified = true WHERE id = $1", [otpCheck.rows[0].id]);
+
+        // Insert Job
         const result = await client.query(
             `INSERT INTO jobs (
                 customer_id, title, description, material_type, quantity, 
@@ -54,7 +100,7 @@ const createJob = async (req, res) => {
         return res.status(201).json({ success: true, message: "Job created successfully", job });
     } catch (err) {
         await client.query("ROLLBACK");
-        console.error("CREATE JOB ERROR:", err);
+        console.error("VERIFY AND SUBMIT JOB ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error" });
     } finally {
         client.release();
@@ -143,4 +189,28 @@ const getAvailableJobs = async (req, res) => {
     }
 };
 
-module.exports = { createJob, getCustomerJobs, editJob, getAvailableJobs };
+const getOngoingJobs = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userType = req.user.user_type;
+
+        let query = "";
+        const params = [userId];
+
+        if (userType === 'customer' || userType === 'admin') {
+            query = `SELECT * FROM jobs WHERE customer_id = $1 AND status IN ('open', 'awarded', 'active', 'on_hold') ORDER BY created_at DESC`;
+        } else if (userType === 'vendor') {
+            query = `SELECT * FROM jobs WHERE awarded_vendor_id = $1 AND status IN ('awarded', 'active', 'on_hold') ORDER BY created_at DESC`;
+        } else if (userType === 'both') {
+            query = `SELECT * FROM jobs WHERE (customer_id = $1 OR awarded_vendor_id = $1) AND status IN ('open', 'awarded', 'active', 'on_hold') ORDER BY created_at DESC`;
+        }
+
+        const result = await pool.query(query, params);
+        return res.json({ success: true, count: result.rowCount, jobs: result.rows });
+    } catch (err) {
+        console.error("GET ONGOING JOBS ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+module.exports = { sendJobOTP, verifyAndSubmitJob, getCustomerJobs, editJob, getAvailableJobs, getOngoingJobs };
