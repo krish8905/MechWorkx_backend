@@ -9,7 +9,7 @@ const sendJobOTP = async (req, res) => {
 
         if (!jobWork) return res.status(400).json({ success: false, message: "Job work title is required" });
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
         const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
         await pool.query(

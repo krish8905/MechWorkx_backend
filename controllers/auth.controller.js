@@ -2,7 +2,7 @@ const pool = require("../config/db");
 const jwt = require("jsonwebtoken");
 
 const generateOTP = () => {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(Math.floor(1000 + Math.random() * 9000));
 };
 
 const signToken = (user) => {
