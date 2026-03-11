@@ -35,8 +35,8 @@ const verifyAndSubmitJob = async (req, res) => {
     try {
         const {
             otp, title, description, material_type, quantity, budget,
-            deadline, job_type, delivery_location, material_provider,
-            category_id, invited_vendor_ids
+            deadline, job_type, delivery_location, address, city, pincode,
+            material_provider, category_id, invited_vendor_ids
         } = req.body;
         const customerId = req.user.id;
 
@@ -63,15 +63,17 @@ const verifyAndSubmitJob = async (req, res) => {
         // Mark OTP as used
         await client.query("UPDATE otp_verifications SET is_verified = true WHERE id = $1", [otpCheck.rows[0].id]);
 
-        // Insert Job
+        // Insert Job with all fields
         const result = await client.query(
             `INSERT INTO jobs (
                 customer_id, title, description, material_type, quantity, 
-                budget, deadline, job_type, delivery_location, material_provider
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+                budget, deadline, job_type, delivery_location, address, 
+                city, pincode, material_provider
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
             [
                 customerId, title, description, material_type, quantity,
-                budget, deadline, job_type, delivery_location, material_provider
+                budget, deadline, job_type, delivery_location, address,
+                city, pincode, material_provider
             ]
         );
 
@@ -86,8 +88,12 @@ const verifyAndSubmitJob = async (req, res) => {
         }
 
         // Handle private job invitations
-        if (job_type === 'private' && Array.isArray(invited_vendor_ids)) {
-            for (const vendorId of invited_vendor_ids) {
+        const parsedInvites = typeof invited_vendor_ids === 'string'
+            ? JSON.parse(invited_vendor_ids)
+            : invited_vendor_ids;
+
+        if (job_type === 'private' && Array.isArray(parsedInvites)) {
+            for (const vendorId of parsedInvites) {
                 await client.query(
                     "INSERT INTO job_invitations (job_id, vendor_id, status) VALUES ($1, $2, 'invited')",
                     [job.id, vendorId]
@@ -95,9 +101,25 @@ const verifyAndSubmitJob = async (req, res) => {
             }
         }
 
+        // Save uploaded files (up to 3)
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                const fileUrl = `/uploads/jobs/${file.filename}`;
+                await client.query(
+                    "INSERT INTO job_files (job_id, file_type, file_url) VALUES ($1, 'datafile', $2)",
+                    [job.id, fileUrl]
+                );
+            }
+        }
+
         await client.query("COMMIT");
 
-        return res.status(201).json({ success: true, message: "Job created successfully", job });
+        return res.status(201).json({
+            success: true,
+            message: "Job created successfully",
+            job,
+            files_uploaded: req.files ? req.files.length : 0
+        });
     } catch (err) {
         await client.query("ROLLBACK");
         console.error("VERIFY AND SUBMIT JOB ERROR:", err);
