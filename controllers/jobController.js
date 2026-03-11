@@ -36,7 +36,7 @@ const verifyAndSubmitJob = async (req, res) => {
         const {
             otp, title, description, material_type, quantity, budget,
             deadline, job_type, delivery_location, address, city, pincode,
-            material_provider, category_id, invited_vendor_ids
+            material_provider, category_id, job_work_id, invited_vendor_ids
         } = req.body;
         const customerId = req.user.id;
 
@@ -63,17 +63,17 @@ const verifyAndSubmitJob = async (req, res) => {
         // Mark OTP as used
         await client.query("UPDATE otp_verifications SET is_verified = true WHERE id = $1", [otpCheck.rows[0].id]);
 
-        // Insert Job with all fields
+        // Insert Job with all fields (collected from 5-step form)
         const result = await client.query(
             `INSERT INTO jobs (
                 customer_id, title, description, material_type, quantity, 
                 budget, deadline, job_type, delivery_location, address, 
-                city, pincode, material_provider
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+                city, pincode, material_provider, job_work_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
             [
                 customerId, title, description, material_type, quantity,
                 budget, deadline, job_type, delivery_location, address,
-                city, pincode, material_provider
+                city, pincode, material_provider, job_work_id || null
             ]
         );
 
