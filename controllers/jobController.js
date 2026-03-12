@@ -1,4 +1,6 @@
 const pool = require("../config/db");
+const supabase = require("../config/supabase");
+const path = require("path");
 
 // ── CUSTOMER APIs ──
 
@@ -101,13 +103,39 @@ const verifyAndSubmitJob = async (req, res) => {
             }
         }
 
-        // Save uploaded files (up to 3)
+        // Save uploaded files to Supabase Storage
         if (req.files && req.files.length > 0) {
+            if (!supabase) {
+                console.error("❌ Supabase client not initialized. Cannot upload files.");
+                throw new Error("File upload failed: Supabase Storage not configured.");
+            }
             for (const file of req.files) {
-                const fileUrl = `/uploads/jobs/${file.filename}`;
+                const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+                const fileName = `job-${job.id}-${uniqueSuffix}${path.extname(file.originalname)}`;
+                
+                // Upload to Supabase bucket 'job-files'
+                const { data, error } = await supabase.storage
+                    .from('job-files')
+                    .upload(fileName, file.buffer, {
+                        contentType: file.mimetype,
+                        upsert: false
+                    });
+
+                if (error) {
+                    console.error("SUPABASE UPLOAD ERROR:", error);
+                    // Continue with other files or throw error? 
+                    // Let's throw to be safe for this critical flow
+                    throw new Error(`Failed to upload file to Supabase: ${error.message}`);
+                }
+
+                // Get Public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('job-files')
+                    .getPublicUrl(fileName);
+
                 await client.query(
                     "INSERT INTO job_files (job_id, file_type, file_url) VALUES ($1, 'datafile', $2)",
-                    [job.id, fileUrl]
+                    [job.id, publicUrl]
                 );
             }
         }
@@ -169,7 +197,7 @@ const editJob = async (req, res) => {
         let i = 1;
 
         for (const [key, value] of Object.entries(updates)) {
-            if (['title', 'description', 'material_type', 'quantity', 'budget', 'deadline', 'delivery_location'].includes(key)) {
+            if (['title', 'description', 'material_type', 'quantity', 'budget', 'deadline', 'delivery_location', 'address', 'city', 'pincode', 'job_work_id'].includes(key)) {
                 fields.push(`${key} = $${i++}`);
                 values.push(value);
             }
@@ -185,6 +213,47 @@ const editJob = async (req, res) => {
     } catch (err) {
         console.error("EDIT JOB ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+const deleteJob = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { jobId } = req.params;
+        const customerId = req.user.id;
+
+        await client.query("BEGIN");
+
+        // Check if job exists and belongs to customer
+        const jobCheck = await client.query("SELECT status FROM jobs WHERE id = $1 AND customer_id = $2", [jobId, customerId]);
+        if (jobCheck.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ success: false, message: "Job not found" });
+        }
+
+        // Only allow deletion if job is still 'open' (no bids awarded/active)
+        if (jobCheck.rows[0].status !== 'open') {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ success: false, message: "Cannot delete job that is already awarded or active" });
+        }
+
+        // Delete associated records first (optional depending on ON DELETE CASCADE in SQL)
+        await client.query("DELETE FROM job_files WHERE job_id = $1", [jobId]);
+        await client.query("DELETE FROM job_category_mapping WHERE job_id = $1", [jobId]);
+        await client.query("DELETE FROM job_invitations WHERE job_id = $1", [jobId]);
+        await client.query("DELETE FROM bids WHERE job_id = $1", [jobId]);
+
+        // Delete the job
+        await client.query("DELETE FROM jobs WHERE id = $1 AND customer_id = $2", [jobId, customerId]);
+
+        await client.query("COMMIT");
+        return res.json({ success: true, message: "Job deleted successfully" });
+    } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("DELETE JOB ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+    } finally {
+        client.release();
     }
 };
 
@@ -235,4 +304,12 @@ const getOngoingJobs = async (req, res) => {
     }
 };
 
-module.exports = { sendJobOTP, verifyAndSubmitJob, getCustomerJobs, editJob, getAvailableJobs, getOngoingJobs };
+module.exports = {
+    sendJobOTP,
+    verifyAndSubmitJob,
+    getCustomerJobs,
+    editJob,
+    deleteJob,
+    getAvailableJobs,
+    getOngoingJobs
+};

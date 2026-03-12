@@ -3,7 +3,15 @@ const router = express.Router();
 const { auth } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 const upload = require("../middleware/upload");
-const { sendJobOTP, verifyAndSubmitJob, getCustomerJobs, editJob, getAvailableJobs, getOngoingJobs } = require("../controllers/jobController");
+const { 
+    sendJobOTP, 
+    verifyAndSubmitJob, 
+    getCustomerJobs, 
+    editJob, 
+    deleteJob, 
+    getAvailableJobs, 
+    getOngoingJobs 
+} = require("../controllers/jobController");
 
 // Customer routes
 router.post("/send-otp", auth, authorizeRoles('customer'), sendJobOTP);
@@ -11,6 +19,7 @@ router.post("/send-otp", auth, authorizeRoles('customer'), sendJobOTP);
 router.post("/verify-otp-submit", auth, authorizeRoles('customer'), upload.array('files', 3), verifyAndSubmitJob);
 router.get("/my-jobs", auth, authorizeRoles('customer'), getCustomerJobs);
 router.put("/:jobId", auth, authorizeRoles('customer'), editJob);
+router.delete("/:jobId", auth, authorizeRoles('customer'), deleteJob);
 
 // Ongoing jobs for both roles
 router.get("/ongoing", auth, getOngoingJobs);
