@@ -10,7 +10,9 @@ const {
     editJob, 
     deleteJob, 
     getAvailableJobs, 
-    getOngoingJobs 
+    getOngoingJobs,
+    getJobCategories,
+    getJobWorks
 } = require("../controllers/jobController");
 
 // Customer routes
@@ -26,5 +28,9 @@ router.get("/ongoing", auth, getOngoingJobs);
 
 // Vendor routes
 router.get("/available", auth, authorizeRoles('vendor'), getAvailableJobs);
+
+// Public listing routes
+router.get("/categories", getJobCategories);
+router.get("/job-works/:categoryId", getJobWorks);
 
 module.exports = router;

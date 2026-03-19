@@ -38,6 +38,7 @@ const verifyAndSubmitJob = async (req, res) => {
         const {
             otp, title, description, material_type, quantity, budget,
             deadline, job_type, delivery_location, address, city, pincode,
+            trade_name, trade_address, email, phone_number,
             material_provider, category_id, job_work_id, invited_vendor_ids
         } = req.body;
         const customerId = req.user.id;
@@ -70,12 +71,14 @@ const verifyAndSubmitJob = async (req, res) => {
             `INSERT INTO jobs (
                 customer_id, title, description, material_type, quantity, 
                 budget, deadline, job_type, delivery_location, address, 
-                city, pincode, material_provider, job_work_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+                city, pincode, trade_name, trade_address, email, phone_number,
+                material_provider, job_work_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING *`,
             [
                 customerId, title, description, material_type, quantity,
                 budget, deadline, job_type, delivery_location, address,
-                city, pincode, material_provider, job_work_id || null
+                city, pincode, trade_name, trade_address, email, phone_number,
+                material_provider, job_work_id || null
             ]
         );
 
@@ -159,18 +162,34 @@ const verifyAndSubmitJob = async (req, res) => {
 
 const getCustomerJobs = async (req, res) => {
     try {
-        const { status } = req.query; // all, active, awarded, closed
+        const { tab } = req.query; // all, active, awarded, closed
         const customerId = req.user.id;
 
-        let query = "SELECT * FROM jobs WHERE customer_id = $1";
+        let query = `
+            SELECT 
+                j.*, 
+                c.name as category_name, 
+                w.name as work_name,
+                (SELECT status_percent FROM job_progress WHERE job_id = j.id ORDER BY created_at DESC LIMIT 1) as latest_progress
+            FROM jobs j
+            LEFT JOIN job_category_mapping jcm ON j.id = jcm.job_id
+            LEFT JOIN job_categories c ON jcm.category_id = c.id
+            LEFT JOIN job_works w ON j.job_work_id = w.id
+            WHERE j.customer_id = $1
+        `;
         const params = [customerId];
 
-        if (status && status !== 'all') {
-            query += " AND status = $2";
-            params.push(status);
+        if (tab === 'active') {
+            query += " AND j.status = 'active'";
+        } else if (tab === 'awarded') {
+            query += " AND j.status = 'awarded'";
+        } else if (tab === 'closed') {
+            query += " AND j.status IN ('completed', 'cancelled', 'on_hold')";
+        } else if (tab === 'open') {
+             query += " AND j.status = 'open'";
         }
 
-        query += " ORDER BY created_at DESC";
+        query += " ORDER BY j.created_at DESC";
 
         const result = await pool.query(query, params);
         return res.json({ success: true, count: result.rowCount, jobs: result.rows });
@@ -304,6 +323,30 @@ const getOngoingJobs = async (req, res) => {
     }
 };
 
+const getJobCategories = async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM job_categories ORDER BY name ASC");
+        return res.json({ success: true, categories: result.rows });
+    } catch (err) {
+        console.error("GET CATEGORIES ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+const getJobWorks = async (req, res) => {
+    try {
+        const { categoryId } = req.params;
+        const result = await pool.query(
+            "SELECT * FROM job_works WHERE category_id = $1 ORDER BY name ASC",
+            [categoryId]
+        );
+        return res.json({ success: true, job_works: result.rows });
+    } catch (err) {
+        console.error("GET JOB WORKS ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 module.exports = {
     sendJobOTP,
     verifyAndSubmitJob,
@@ -311,5 +354,7 @@ module.exports = {
     editJob,
     deleteJob,
     getAvailableJobs,
-    getOngoingJobs
+    getOngoingJobs,
+    getJobCategories,
+    getJobWorks
 };

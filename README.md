@@ -23,11 +23,13 @@ Live Server: `http://localhost:5000`
 |---|---|---|---|
 | `/send-otp` | POST | Customer | Request OTP to post a new job |
 | `/verify-otp-submit` | POST | Customer | Verify OTP and create job (Multipart/form-data) |
-| `/my-jobs` | GET | Customer | List all jobs posted by the logged-in customer |
+| `/my-jobs` | GET | Customer | List all jobs (Supports `?tab=all,open,active,awarded,closed`) |
 | `/:jobId` | PUT | Customer | Update job details (title, budget, address, etc.) |
 | `/:jobId` | DELETE | Customer | Delete a job (only if status is 'open') |
 | `/ongoing` | GET | Both | List all ongoing/active jobs |
 | `/available` | GET | Vendor | Browse available public or invited jobs |
+| `/categories` | GET | Public | List all job categories |
+| `/job-works/:categoryId` | GET | Public | List job works for a specific category |
 
 ---
 
@@ -87,7 +89,39 @@ Live Server: `http://localhost:5000`
 |---|---|---|
 | `/users` | GET | List all users in the system |
 | `/jobs` | GET | List all jobs in the system |
-| `/categories` | POST | Create a new job category |
+| `/categories` | POST | Create a new job category |---
 
+## 🚀 How to Test "Get a Quote" (5-Step Flow)
 
+Use Postman to simulate the 5-section wizard:
 
+### 1. [Section 1 & 2] Fetch Options
+- `GET /api/jobs/categories` -> Get Category ID.
+- `GET /api/jobs/job-works/<category_id>` -> Get Job Work ID.
+
+### 2. [Section 3] File Preparation
+- Prepare up to 3 files to upload.
+
+### 3. [Section 4] Form Data
+- Collect all job details: title, description, budget, deadline, material details, and **Trade Details** (Trade Name, Address, Email, Phone).
+
+### 4. [Section 5] OTP Initiation
+- `POST /api/jobs/send-otp` (JSON)
+  - Headers: `Authorization: Bearer <token>`
+  - Body: `{ "jobWork": "CNC Turning" }`
+- **Response**: Copy the 4-digit `otp`.
+
+### 5. [Section 5] Submission
+- `POST /api/jobs/verify-otp-submit` (**Multipart Form-Data**)
+  - Headers: `Authorization: Bearer <token>`
+  - Pass all fields: `otp`, `title`, `description`, `material_type`, `quantity`, `budget`, `deadline`, `job_type`, `delivery_location`, `address`, `city`, `pincode`, `trade_name`, `trade_address`, `email`, `phone_number`, `material_provider`, `category_id`, `job_work_id`.
+  - Field `files`: Upload up to 3 files.
+
+---
+
+## 🛠️ Environment Setup
+1. Clone the repo.
+2. Run `npm install`.
+3. Create `.env` with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_KEY`.
+4. Run migrations from `sql/schema.sql`.
+5. Start server: `npm run dev`.
