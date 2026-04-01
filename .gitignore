@@ -1,8 +1,2 @@
 node_modules/
-dist/
-build/
-logs/
 *.log
-.DS_Store
-.vscode/
-uploads/

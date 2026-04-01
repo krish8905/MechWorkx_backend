@@ -9,6 +9,7 @@ const bidRoutes = require("./routes/bidRoutes");
 const progressRoutes = require("./routes/progressRoutes");
 const miscRoutes = require("./routes/miscRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/api/bids", bidRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/dash", miscRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/profile", profileRoutes);
 
 // Root check
 app.get("/", (req, res) => {
@@ -43,6 +45,24 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 MeckWorkx Backend running on http://localhost:${PORT}`);
+// Listen on 0.0.0.0 so other devices on the local network can reach the API
+// (not just 'localhost' which only works on the same machine)
+app.listen(PORT, '0.0.0.0', () => {
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  let localIp = 'unknown';
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        localIp = net.address;
+        break;
+      }
+    }
+  }
+  console.log(`🚀 MeckWorkx Backend running at:`);
+  console.log(`   Local:   http://localhost:${PORT}`);
+  console.log(`   Network: http://${localIp}:${PORT}  ← Use this URL on other devices`);
 });
+
+try { console.log('Checking nodemon server response...'); require('http').get('http://localhost:5000/api/profile/me', (res) => { console.log('Got response: ' + res.statusCode); }); } catch(err) {}
+

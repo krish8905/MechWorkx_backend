@@ -1,6 +1,4 @@
 const pool = require("../config/db");
-const supabase = require("../config/supabase");
-const path = require("path");
 
 const acceptAward = async (req, res) => {
     try {
@@ -61,47 +59,11 @@ const updateProgress = async (req, res) => {
 
         await client.query("BEGIN");
 
-        let final_inspection_url = inspection_sheet_url;
-
-        // If a file is uploaded, use Supabase
-        if (req.file) {
-            if (!supabase) {
-                await client.query("ROLLBACK");
-                return res.status(500).json({ success: false, message: "Supabase Storage not configured" });
-            }
-
-            const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-            const fileName = `inspection-${jobId}-${uniqueSuffix}${path.extname(req.file.originalname)}`;
-            
-            const { error: uploadError } = await supabase.storage
-                .from('job-files')
-                .upload(fileName, req.file.buffer, {
-                    contentType: req.file.mimetype,
-                    upsert: false
-                });
-
-            if (uploadError) {
-                await client.query("ROLLBACK");
-                return res.status(500).json({ success: false, message: `Upload failed: ${uploadError.message}` });
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('job-files')
-                .getPublicUrl(fileName);
-            
-            final_inspection_url = publicUrl;
-        }
-
-        if (status_percent === 100 && !final_inspection_url) {
-            await client.query("ROLLBACK");
-            return res.status(400).json({ success: false, message: "Inspection sheet is required for 100% completion" });
-        }
-
         // 1. Log progress
         await client.query(
             `INSERT INTO job_progress (job_id, status_percent, notes, inspection_sheet_url) 
              VALUES ($1, $2, $3, $4)`,
-            [jobId, status_percent, notes, final_inspection_url]
+            [jobId, status_percent, notes, inspection_sheet_url]
         );
 
         // 2. If 100%, update job status
@@ -112,10 +74,10 @@ const updateProgress = async (req, res) => {
             );
 
             // Log file if inspection sheet provided
-            if (final_inspection_url) {
+            if (inspection_sheet_url) {
                 await client.query(
                     "INSERT INTO job_files (job_id, file_type, file_url) VALUES ($1, 'inspection', $2)",
-                    [jobId, final_inspection_url]
+                    [jobId, inspection_sheet_url]
                 );
             }
         }
@@ -155,44 +117,15 @@ const updateShipmentStatus = async (req, res) => {
         }
         if (jobCheck.rows[0].awarded_vendor_id !== vendorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-        let final_file_url = file_url;
-
-        // If a file is uploaded, use Supabase
-        if (req.file) {
-            if (!supabase) {
-                return res.status(500).json({ success: false, message: "Supabase Storage not configured" });
-            }
-
-            const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-            const fileName = `shipment-${jobId}-${uniqueSuffix}${path.extname(req.file.originalname)}`;
-            
-            const { error: uploadError } = await supabase.storage
-                .from('job-files')
-                .upload(fileName, req.file.buffer, {
-                    contentType: req.file.mimetype,
-                    upsert: false
-                });
-
-            if (uploadError) {
-                return res.status(500).json({ success: false, message: `Upload failed: ${uploadError.message}` });
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('job-files')
-                .getPublicUrl(fileName);
-            
-            final_file_url = publicUrl;
-        }
-
         // Log shipment file if provided
-        if (final_file_url) {
+        if (file_url) {
             await pool.query(
                 "INSERT INTO job_files (job_id, file_type, file_url) VALUES ($1, 'shipment', $2)",
-                [jobId, final_file_url]
+                [jobId, file_url]
             );
         }
 
-        return res.json({ success: true, message: `Shipment status updated to: ${shipment_status}`, file_url: final_file_url });
+        return res.json({ success: true, message: `Shipment status updated to: ${shipment_status}` });
     } catch (err) {
         console.error("SHIPMENT UPDATE ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error" });

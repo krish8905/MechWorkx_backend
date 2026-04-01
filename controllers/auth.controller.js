@@ -58,7 +58,9 @@ const signup = async (req, res) => {
 
             await client.query("COMMIT");
 
-            console.log(`[SIGNUP OTP] Phone: ${phone} -> OTP: ${otp}`);
+            console.log("\n===============================================");
+            console.log(`🔑 [SIGNUP OTP] Phone: ${phone} -> OTP: ${otp}`);
+            console.log("===============================================\n");
 
             return res.status(201).json({
                 success: true,
@@ -161,7 +163,9 @@ const login = async (req, res) => {
             [user.id, otp, expiry]
         );
 
-        console.log(`[LOGIN OTP] Phone: ${phone} -> OTP: ${otp}`);
+        console.log("\n===============================================");
+        console.log(`🔑 [LOGIN OTP] Phone: ${phone} -> OTP: ${otp}`);
+        console.log("===============================================\n");
 
         return res.json({
             success: true,
